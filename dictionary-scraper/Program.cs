@@ -27,9 +27,9 @@ namespace dictionary_scraper
             //Sango dictionary
             //http://joelandjes.com/sangolex/lexicon/01.htm
 
-            RunLocalScraperAsync();
-           
-            //RunDockerisedScraper();
+            //RunLocalScraperAsync();
+
+            RunDockerisedScraper();
 
         }
 
@@ -47,9 +47,79 @@ namespace dictionary_scraper
             var remoteHub = "http://localhost:4444/wd/hub"; //<==default selenium hub location
             FirefoxOptions firefoxOptions = new FirefoxOptions();
             IWebDriver _remoteDriver = new RemoteWebDriver(firefoxOptions);
-            ScrapeDictionaryEntries(_remoteDriver);
+            //ScrapeDictionaryEntries(_remoteDriver);
+            ScrapeSangoEntries(_remoteDriver);
             _remoteDriver.Quit();
 
+        }
+
+        public static void ScrapeSangoEntries(IWebDriver driver)
+        {
+            driver.Url = "http://joelandjes.com/sangolex/lexicon/main.htm";
+            int PageNumber = 18;
+            var DictionaryTerms = new List<DictionaryTerm>();
+
+
+            while (PageNumber < 26)
+            {
+                driver.Navigate().GoToUrl($"http://joelandjes.com/sangolex/lexicon/{PageNumber.ToString("00")}.htm");
+                IWebElement bodyFrame = driver.FindElement(By.TagName("body"));
+                IList<IWebElement> elements = bodyFrame.FindElements(By.ClassName("lpLexEntryPara"));
+                char LetterIndex = bodyFrame.FindElement(By.ClassName("lpTitlePara")).Text.First();
+                string LastKnownBaseTerm = String.Empty;
+
+                for (var i = 0; i < elements.Count(); i++)
+                {
+                    Console.WriteLine($"Dictionary Index Letter {LetterIndex}, processing entry [{i+1}/{elements.Count()}]");
+
+                    string BaseTermEnglish;
+                    string BaseTermSango = elements[i].FindElement(By.ClassName("lpLexEntryName")).Text;
+                    var TermTypeTag = elements[i].FindElements(By.ClassName("lpPartOfSpeech"));
+                    string TermType = TermTypeTag.Any() ? TermTypeTag.FirstOrDefault().Text : null;
+
+                    try
+                    {
+                        BaseTermEnglish = elements[i].FindElement(By.ClassName("lpGlossEnglish")).Text;
+                        LastKnownBaseTerm = BaseTermEnglish;
+
+                        DictionaryTerms.Add(new DictionaryTerm()
+                        {
+                            BaseTerm = BaseTermSango,
+                            Type = TermType,
+                            Translation = new List<string>() { BaseTermEnglish }
+                        });
+                    }
+                    catch (OpenQA.Selenium.NoSuchElementException)
+                    {
+                        var anchorTag = elements[i].FindElements(By.TagName("a"));
+                        if (anchorTag.Any())
+                        {
+                            DictionaryTerms.Add(new DictionaryTerm()
+                            {
+                                BaseTerm = BaseTermSango,
+                                Type = TermType,
+                                Translation = new List<string>() { anchorTag.FirstOrDefault().GetAttribute("title") }
+                            });
+                        }
+                        else
+                        {
+                            DictionaryTerms.Add(new DictionaryTerm()
+                            {
+                                BaseTerm = BaseTermSango,
+                                Type = TermType,
+                                Translation = new List<string>()
+                            });
+                        }
+                        /*BaseTermEnglish = LastKnownBaseTerm;
+                        DictionaryTerms.Where(x => x.BaseTerm.ToLower() == BaseTermSango).First().Translation.Add(BaseTermEnglish);*/
+                    }
+                }
+                SaveTranslations(DictionaryTerms);
+                PageNumber++;
+            }
+
+            /* Dump into excel file, col for name   
+            Sango || type || EN || FR */
         }
 
         public static void ScrapeDictionaryEntries(IWebDriver driver)
